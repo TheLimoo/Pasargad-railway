@@ -1,15 +1,23 @@
-#!/bin/bash
-echo "🚀 Starting X-UI on port ${PORT}..."
-# تنظیم پورت در فایل کانفیگ
-mkdir -p /etc/x-ui
-cat > /etc/x-ui/config.json << EOF
-{
-  "webPort": ${PORT},
-  "webBasePath": "/",
-  "webListen": "0.0.0.0",
-  "logLevel": "info"
-}
-EOF
-# اجرای X-UI
-cd /usr/local/x-ui
-./x-ui
+#!/usr/bin/env bash
+
+ROLE="${ROLE:-all-in-one}"
+
+export UVICORN_HOST="${UVICORN_HOST:-0.0.0.0}"
+export UVICORN_PORT="${PORT:-${UVICORN_PORT:-8000}}"
+
+if [ "${ROLE}" = "node" ]; then
+    exec python node_worker.py
+elif [ "${ROLE}" = "scheduler" ]; then
+    exec python scheduler_worker.py
+else
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting ${ROLE}..."
+    python -m alembic upgrade head
+    exit_code=$?
+
+    if [ $exit_code -ne 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Database migrations failed"
+        exit 1
+    fi
+
+    exec python main.py
+fi
