@@ -4,9 +4,9 @@
 
 [deploy]
   restartPolicyType = "always"
+  healthcheckPath = "/health"
 
-[deploy.ports]
-  [deploy.ports.54321]
-    protocol = "tcp"
-  [deploy.ports.443]
-    protocol = "tcp"
+[[ports]]
+  id = "web"
+  type = "tcp"
+  port = 8000
