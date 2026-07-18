@@ -1,26 +1,50 @@
-FROM alpine:3.19
+ARG PYTHON_VERSION=3.14
 
-RUN apk add --no-cache \
+FROM ghcr.io/astral-sh/uv:python$PYTHON_VERSION-bookworm-slim AS builder
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    python3-dev \
+    libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV UV_PYTHON_DOWNLOADS=0
+
+WORKDIR /build
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project --no-dev
+ADD . /build
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+
+FROM python:$PYTHON_VERSION-slim-bookworm
+
+COPY --from=builder /build /code
+WORKDIR /code
+
+ENV PATH="/code/.venv/bin:$PATH"
+
+# Install curl for health checks
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    bash \
-    ca-certificates \
-    socat \
-    tzdata \
-    sqlite \
-    && ln -sf /usr/share/zoneinfo/Asia/Tehran /etc/localtime
+    && rm -rf /var/lib/apt/lists/*
 
-# نصب X-UI
-RUN curl -L https://github.com/mhsanaei/3x-ui/releases/download/v3.5.0/x-ui-linux-amd64.tar.gz -o /tmp/x-ui.tar.gz \
-    && tar -xzf /tmp/x-ui.tar.gz -C /usr/local/ \
-    && rm /tmp/x-ui.tar.gz \
-    && chmod +x /usr/local/x-ui/x-ui
+COPY cli_wrapper.sh /usr/bin/pasarguard-cli
+RUN chmod +x /usr/bin/pasarguard-cli
 
-RUN mkdir -p /etc/x-ui /var/log/x-ui
+COPY tui_wrapper.sh /usr/bin/pasarguard-tui
+RUN chmod +x /usr/bin/pasarguard-tui
 
-COPY start.sh /start.sh
-RUN chmod +x /start.sh
+# Copy healthcheck script
+COPY healthcheck.sh /code/healthcheck.sh
+RUN chmod +x /code/healthcheck.sh
 
-# پورت را داینامیک می‌کنیم
-EXPOSE ${PORT:-2053}
+RUN chmod +x /code/start.sh
 
-CMD ["/start.sh"]
+EXPOSE 8000
+
+ENTRYPOINT ["/code/start.sh"]
